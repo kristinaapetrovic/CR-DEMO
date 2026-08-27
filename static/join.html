@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Remote Support Session</title>
+<script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.20.0.js"></script>
+<style>
+  body { font-family: sans-serif; margin: 0; background: #111; color: #eee; }
+  #videos { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
+  .video-box { width: 320px; height: 240px; background: #000; }
+  #status { padding: 8px; }
+</style>
+</head>
+<body>
+  <div id="status">Connecting...</div>
+  <div id="videos">
+    <div id="local-video" class="video-box"></div>
+  </div>
+
+<script>
+const params = new URLSearchParams(window.location.search);
+const channel = params.get("channel");
+const token = params.get("token");
+const uid = Number(params.get("uid"));
+const appId = "b10412ce89774ecbb58bbb2d39e79b48"; // public, safe to expose client-side
+
+const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
+
+async function join() {
+  await client.join(appId, channel, token, uid);
+
+  const [audioTrack, videoTrack] = await Promise.all([
+    AgoraRTC.createMicrophoneAudioTrack(),
+    AgoraRTC.createCameraVideoTrack(),
+  ]);
+  videoTrack.play("local-video");
+  await client.publish([audioTrack, videoTrack]);
+
+  document.getElementById("status").innerText = "Connected - channel: " + channel;
+
+  client.on("user-published", async (user, mediaType) => {
+    await client.subscribe(user, mediaType);
+    if (mediaType === "video") {
+      const box = document.createElement("div");
+      box.className = "video-box";
+      box.id = "remote-" + user.uid;
+      document.getElementById("videos").appendChild(box);
+      user.videoTrack.play(box);
+    }
+    if (mediaType === "audio") {
+      user.audioTrack.play();
+    }
+  });
+
+  client.on("user-unpublished", (user) => {
+    const box = document.getElementById("remote-" + user.uid);
+    if (box) box.remove();
+  });
+}
+
+if (!channel || !token) {
+  document.getElementById("status").innerText = "Missing channel or token in link.";
+} else {
+  join().catch((err) => {
+    document.getElementById("status").innerText = "Failed to join: " + err.message;
+  });
+}
+</script>
+</body>
+</html>

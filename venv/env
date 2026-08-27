@@ -1,0 +1,24 @@
+# Agora Console -> Project -> App ID / App Certificate
+AGORA_APP_ID=your_agora_app_id
+AGORA_APP_CERTIFICATE=your_agora_app_certificate
+
+# Agora Console -> RESTful API keys (used for Cloud Recording API, NOT the
+# same as App ID/Certificate above)
+AGORA_CUSTOMER_ID=your_agora_customer_id
+AGORA_CUSTOMER_SECRET=your_agora_customer_secret
+
+TOKEN_EXPIRE_SECONDS=3600
+RECORDING_UID=999
+
+# URL of the static join page that actually opens the Agora Web SDK call
+# (see static/join.html for a minimal starting point - host it wherever
+# makes sense, e.g. same service, S3 static site, Vercel, etc.)
+JOIN_PAGE_BASE_URL=https://yourdomain.com/join.html
+
+# SMTP - works with Gmail (use an App Password, not your normal password),
+# Outlook, or swap later for SendGrid/AWS SES SMTP credentials
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASSWORD=your_app_password
+FROM_EMAIL=your_email@gmail.com
