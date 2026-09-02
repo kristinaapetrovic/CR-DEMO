@@ -97,6 +97,7 @@ class CreateSessionRequest(BaseModel):
 
 class CreateSessionResponse(BaseModel):
     join_link: str
+    oem_join_link: str
     channel_name: str
     recording_resource_id: Optional[str] = None
     recording_sid: Optional[str] = None
@@ -206,24 +207,32 @@ def send_join_email(to_email: str, join_link: str, repair_order_id: Optional[str
 async def create_session(req: CreateSessionRequest):
     channel_name = generate_channel_name(req.repair_order_id)
 
-    # Mechanic's uid is fixed here for simplicity; give each participant
-    # a distinct uid if you need to tell them apart in recordings/analytics.
+    # Different uids for mechanic and OEM rep so both can be in the
+    # channel at the same time without conflicting.
     mechanic_uid = 1
-    token = generate_rtc_token(channel_name, mechanic_uid)
+    oem_uid = 2
 
-    join_link = (
+    mechanic_token = generate_rtc_token(channel_name, mechanic_uid)
+    oem_token = generate_rtc_token(channel_name, oem_uid)
+
+    mechanic_join_link = (
         f"{JOIN_PAGE_BASE_URL}?channel={quote(channel_name)}"
-        f"&token={quote(token)}&uid={mechanic_uid}"
+        f"&token={quote(mechanic_token)}&uid={mechanic_uid}"
+    )
+    oem_join_link = (
+        f"{JOIN_PAGE_BASE_URL}?channel={quote(channel_name)}"
+        f"&token={quote(oem_token)}&uid={oem_uid}"
     )
 
     recording = start_cloud_recording(channel_name) if ENABLE_CLOUD_RECORDING else None
-    send_join_email(req.oem_email, join_link, req.repair_order_id)
+    send_join_email(req.oem_email, oem_join_link, req.repair_order_id)
 
-    logger.info(f"DEBUG - raw token for manual testing: {token}")
-    logger.info(f"DEBUG - channel name for manual testing: {channel_name}")
+    logger.info(f"DEBUG - mechanic join link: {mechanic_join_link}")
+    logger.info(f"DEBUG - oem join link: {oem_join_link}")
 
     return CreateSessionResponse(
-        join_link=join_link,
+        join_link=mechanic_join_link,
+        oem_join_link=oem_join_link,
         channel_name=channel_name,
         recording_resource_id=recording["resourceId"] if recording else None,
         recording_sid=recording["sid"] if recording else None,

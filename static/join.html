@@ -27,17 +27,6 @@ const appId = "b10412ce89774ecbb58bbb2d39e79b48"; // public, safe to expose clie
 const client = AgoraRTC.createClient({ mode: "rtc", codec: "vp8" });
 
 async function join() {
-  await client.join(appId, channel, token, uid);
-
-  const [audioTrack, videoTrack] = await Promise.all([
-    AgoraRTC.createMicrophoneAudioTrack(),
-    AgoraRTC.createCameraVideoTrack(),
-  ]);
-  videoTrack.play("local-video");
-  await client.publish([audioTrack, videoTrack]);
-
-  document.getElementById("status").innerText = "Connected - channel: " + channel;
-
   client.on("user-published", async (user, mediaType) => {
     await client.subscribe(user, mediaType);
     if (mediaType === "video") {
@@ -56,6 +45,17 @@ async function join() {
     const box = document.getElementById("remote-" + user.uid);
     if (box) box.remove();
   });
+
+  await client.join(appId, channel, token, uid);
+
+  const [audioTrack, videoTrack] = await Promise.all([
+    AgoraRTC.createMicrophoneAudioTrack(),
+    AgoraRTC.createCameraVideoTrack(),
+  ]);
+  videoTrack.play("local-video");
+  await client.publish([audioTrack, videoTrack]);
+
+  document.getElementById("status").innerText = "Connected - channel: " + channel;
 }
 
 if (!channel || !token) {
