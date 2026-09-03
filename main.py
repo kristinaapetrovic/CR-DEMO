@@ -32,6 +32,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from agora_token_builder import RtcTokenBuilder
 
+import json
+from fastapi.responses import RedirectResponse
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
@@ -43,6 +46,8 @@ logger = logging.getLogger("oem_video_service")
 
 AGORA_APP_ID = os.environ["AGORA_APP_ID"]
 AGORA_APP_CERTIFICATE = os.environ["AGORA_APP_CERTIFICATE"]
+UPSTASH_REDIS_REST_URL = os.environ["UPSTASH_REDIS_REST_URL"]
+UPSTASH_REDIS_REST_TOKEN = os.environ["UPSTASH_REDIS_REST_TOKEN"]
 
 # These are different from App ID/Certificate - they come from
 # Agora Console -> RESTful API keys, and are used to call the
@@ -81,6 +86,32 @@ def _agora_auth_header() -> dict:
         "Content-Type": "application/json",
     }
 
+def _redis_command(*args) -> dict:
+    resp = requests.post(
+        UPSTASH_REDIS_REST_URL,
+        headers={"Authorization": f"Bearer {UPSTASH_REDIS_REST_TOKEN}"},
+        json=list(args),
+        timeout=10,
+    )
+    if not resp.ok:
+        logger.error("Upstash command failed: %s", resp.text)
+        raise HTTPException(status_code=502, detail="Storage error")
+    return resp.json()
+
+
+def redis_set(key: str, value: dict, ex_seconds: int = 3600) -> None:
+    _redis_command("SET", key, json.dumps(value), "EX", str(ex_seconds))
+
+
+def redis_get(key: str) -> Optional[dict]:
+    result = _redis_command("GET", key).get("result")
+    if result is None:
+        return None
+    return json.loads(result)
+
+
+def redis_del(key: str) -> None:
+    _redis_command("DEL", key)
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -243,3 +274,55 @@ async def create_session(req: CreateSessionRequest):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+ACTIVE_CALL_KEY = "active_call"
+
+
+@app.get("/call")
+async def dial_in():
+    """Fixed link the OEM rep opens to start a call with the (single,
+    hardcoded for POC) worker. Creates a fresh channel, stores the pending
+    call so the worker's polling page picks it up, and sends the OEM
+    straight into the call."""
+    channel_name = generate_channel_name(None)
+
+    mechanic_uid = 1
+    oem_uid = 2
+    mechanic_token = generate_rtc_token(channel_name, mechanic_uid)
+    oem_token = generate_rtc_token(channel_name, oem_uid)
+
+    redis_set(ACTIVE_CALL_KEY, {
+        "channel_name": channel_name,
+        "mechanic_token": mechanic_token,
+        "mechanic_uid": mechanic_uid,
+        "status": "ringing",
+        "created_at": int(time.time()),
+    })
+
+    oem_join_link = (
+        f"{JOIN_PAGE_BASE_URL}?channel={quote(channel_name)}"
+        f"&token={quote(oem_token)}&uid={oem_uid}"
+    )
+    return RedirectResponse(url=oem_join_link)
+
+
+@app.get("/calls/status")
+async def call_status():
+    """Polled by the worker's fixed page to check for an incoming call."""
+    call = redis_get(ACTIVE_CALL_KEY)
+    if not call:
+        return {"has_call": False}
+    return {
+        "has_call": True,
+        "channel": call["channel_name"],
+        "token": call["mechanic_token"],
+        "uid": call["mechanic_uid"],
+        "status": call["status"],
+    }
+
+
+@app.post("/calls/clear")
+async def clear_call():
+    """Called once the worker answers, so the ring doesn't repeat."""
+    redis_del(ACTIVE_CALL_KEY)
+    return {"cleared": True}

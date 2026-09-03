@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Worker - Incoming Calls</title>
+<style>
+  body { font-family: sans-serif; margin: 0; background: #111; color: #eee;
+         height: 100vh; display: flex; flex-direction: column;
+         align-items: center; justify-content: center; }
+  #status { margin-bottom: 24px; font-size: 18px; }
+  #answer-btn { padding: 16px 32px; font-size: 20px; border-radius: 8px;
+                border: none; cursor: not-allowed; background: #444; color: #888; }
+  #answer-btn.active { cursor: pointer; background: #2ecc71; color: #111;
+                        animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+</style>
+</head>
+<body>
+  <div id="status">Waiting for a call...</div>
+  <button id="answer-btn" disabled>Answer</button>
+
+<script>
+let pendingCall = null;
+const statusEl = document.getElementById("status");
+const btn = document.getElementById("answer-btn");
+
+async function poll() {
+  try {
+    const resp = await fetch("/calls/status");
+    const data = await resp.json();
+    if (data.has_call && !pendingCall) {
+      pendingCall = data;
+      statusEl.innerText = "Incoming call!";
+      btn.disabled = false;
+      btn.classList.add("active");
+    } else if (!data.has_call && pendingCall) {
+      pendingCall = null;
+      statusEl.innerText = "Waiting for a call...";
+      btn.disabled = true;
+      btn.classList.remove("active");
+    }
+  } catch (err) {
+    console.error("Polling error:", err);
+  }
+}
+
+btn.addEventListener("click", async () => {
+  if (!pendingCall) return;
+  await fetch("/calls/clear", { method: "POST" });
+  const url = `/static/join.html?channel=${encodeURIComponent(pendingCall.channel)}`
+    + `&token=${encodeURIComponent(pendingCall.token)}&uid=${pendingCall.uid}`;
+  window.location.href = url;
+});
+
+setInterval(poll, 2000);
+poll();
+</script>
+</body>
+</html>
